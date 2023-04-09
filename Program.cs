@@ -2,6 +2,8 @@
 using System.Xml;
 using System.IO.Packaging;
 using System.Text.RegularExpressions;
+using NPOI.XSSF.UserModel;
+using NPOI.SS.UserModel;
 
 internal class Program
 {
@@ -298,6 +300,8 @@ internal class Program
 
         public required string v长ID { get; init; }
 
+        public required string v原始路径 { get; init; }
+
     };
 
     static List<Cla图片信息> F根据图片路径与起始ID生成图片信息(List<Cla图片资源文件数据> v已存在的资源文件, IEnumerable<string> v图片本机路径)
@@ -346,7 +350,8 @@ internal class Program
                 v原始文件名 = v原始文件名,
                 v图片数据 = v原始图片数据,
                 v类型 = v文件类型,
-                v长ID = v长ID
+                v长ID = v长ID,
+                v原始路径 = path
 
 
 
@@ -584,17 +589,12 @@ internal class Program
         }
 
     }
-    private static void Main(string[] args)
+
+
+    static Dictionary<string, string> F将图片放入包并且建立关系(string path, string[] imgPaths)
     {
-        var p1 = @"C:\Users\PC\Desktop\教程\test2.xlsx";
 
-        var p2 = @"C:\Users\PC\Desktop\教程\test.xlsx";
-
-        File.Copy(p1, p2, true);
-
-        var package = System.IO.Packaging.Package.Open(p2);
-
-        var v图片文件夹 = @"C:\Users\PC\Desktop\教程\图片";
+        using var package = System.IO.Packaging.Package.Open(path);
 
         var v已存在图片信息 = F获取已存在的图片资源文件信息(package);
         foreach (var item in v已存在图片信息)
@@ -604,7 +604,7 @@ internal class Program
 
 
 
-        var v添加的图片信息 = F根据图片路径与起始ID生成图片信息(v已存在图片信息, Directory.GetFiles(v图片文件夹));
+        var v添加的图片信息 = F根据图片路径与起始ID生成图片信息(v已存在图片信息, imgPaths);
 
         foreach (var item in v添加的图片信息)
         {
@@ -621,7 +621,141 @@ internal class Program
         F重新生成长ID与短ID映射关系文件(package, F合并图片长ID与短ID映射关系(v已存在的图片映射, v添加的图片信息));
 
         F将映射文件注册(package);
-        package.Close();
+
+        return v添加的图片信息.ToDictionary(k => k.v原始路径, v => v.v长ID);
+
+    }
+
+    public record Cla单元格数据与地址(int Row, int Col, string value);
+
+    public static IEnumerable<Cla单元格数据与地址> NPOIReadExcel(string path, Func<XSSFWorkbook, ISheet> selectSheet)
+    {
+
+        static string GetCellValue(ICell cell)
+        {
+
+            if (cell.CellType == NPOI.SS.UserModel.CellType.Numeric)
+            {
+                return cell.NumericCellValue.ToString();
+            }
+            else
+            {
+                return cell.StringCellValue;
+            }
+        }
+
+
+
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            4096,
+            true);
+
+        var xssWorkbook = new XSSFWorkbook(stream);
+
+
+
+        ISheet sheet = selectSheet(xssWorkbook);
+
+        for (var row_e = sheet.GetRowEnumerator(); row_e.MoveNext();)
+        {
+
+            var row = (IRow)row_e.Current;
+
+
+            for (var cell_e = row.GetEnumerator(); cell_e.MoveNext();)
+            {
+                ICell cell = cell_e.Current;
+
+
+                yield return new Cla单元格数据与地址(cell.Address.Row,
+                cell.Address.Column,
+                GetCellValue(cell));
+
+            }
+
+
+        }
+
+        xssWorkbook.Close();
+    }
+
+
+
+    public static void NPOIWriteExcel(string path, Func<XSSFWorkbook, ISheet> getSheet, IEnumerable<Cla单元格数据与地址> items)
+    {
+
+
+        XSSFWorkbook xssfWB = new(new MemoryStream(File.ReadAllBytes(path)));
+
+        ISheet sheet = getSheet(xssfWB);
+
+
+
+        foreach (var item in items)
+        {
+
+            var row = sheet.GetRow(item.Row);
+
+            var cell = row.GetCell(item.Col);
+           
+            cell.SetCellFormula($"DISPIMG(\"{item.value}\", 1)");
+
+        }
+        using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Write,
+                FileShare.None,
+                16384,
+                true);
+        xssfWB.Write(stream, true);
+
+        stream.SetLength(stream.Position);
+
+        xssfWB.Close();
+
+    }
+
+
+
+    static IEnumerable<Cla单元格数据与地址> F获取单元格中的本地图片路径(string path)
+    {
+
+        return NPOIReadExcel(path, ws => ws.GetSheetAt(ws.ActiveSheetIndex))
+        .Where(p => File.Exists(p.value));
+
+
+
+    }
+
+
+
+    static void F将值设置回单元格(string path, IEnumerable<Cla单元格数据与地址> items)
+    {
+        NPOIWriteExcel(path, ws=> ws.GetSheetAt(ws.ActiveSheetIndex), items);
+
+    }
+
+    private static void Main(string[] args)
+    {
+        var p1 = @"C:\Users\PC\Desktop\教程\test2.xlsx";
+
+        var p2 = @"C:\Users\PC\Desktop\教程\test.xlsx";
+
+        File.Copy(p1, p2, true);
+
+        var v本地图片路径 =  F获取单元格中的本地图片路径(p2);
+
+
+        var dic = F将图片放入包并且建立关系(p2, v本地图片路径.Select(p=> p.value).ToArray());
+
+        F将值设置回单元格(p2, v本地图片路径.Select(p=> new Cla单元格数据与地址(p.Row, p.Col, dic[p.value])));
+
+
 
     }
 
