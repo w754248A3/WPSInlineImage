@@ -12,6 +12,7 @@ function 批量插入图_选中法() {
     lastSelectedPath = pic_pick.SelectedItems(1);
     let pic_geted = pic_pick.SelectedItems;
     let currentCell = ActiveCell;
+    let currentSheet = ActiveSheet;
     let direction = MsgBox("请选择插入方向，纵向请点击【是】，横向请点击【否】", jsYesNo, "图片插入方向");
     for (let counter = 1; counter <= pic_geted.Count; counter++) {
         let y = currentCell.Top;
@@ -19,7 +20,7 @@ function 批量插入图_选中法() {
         let h = currentCell.Height;
         let w = currentCell.Width;
         let pic_Name = pic_geted.Item(counter);
-        let obj = ActiveSheet.Shapes.AddPicture(pic_Name, msoFalse, msoTrue, x, y, w, h);
+        let obj = currentSheet.Shapes.AddPicture(pic_Name, msoFalse, msoTrue, x, y, w, h);
         obj.Placement = xlMoveAndSize;
         obj.LockAspectRatio = false;
         if (direction === 6) {
